@@ -3,24 +3,23 @@
 #include <stdbool.h>
 #include "./main.h"
 
-int numberValue; // 숫자 값을 저장할 변수
-char expression[] = "331 + 2 * 123 * 333"; // 분석할 문자열
-int currentIndex = 0; // 현재 문자의 인덱스
+int numberValue;
+char expression[] = "331 + 2 * 123 * 333";
+int currentIndex = 0;
 
 int week3_main() {
-    getNextToken(); // 첫 토큰을 가져옴
+    getNextToken();
     expr();
-    if (token != END) { // 파싱이 끝난 후 END가 아니면 에러
+    if (token != END) {
         error();
     } else {
-        printf("정상입니다.");
+        printf("정상 입니다.");
     }
     return 0;
 }
 
 void getNextToken() {
     if (expression[currentIndex] == '\0') {
-        printf("마지막 문자\n");
         token = END;
         return;
     }
@@ -54,9 +53,9 @@ void getNextToken() {
             case '*': token = STAR; break;
             case '(': token = LP; break;
             case ')': token = RP; break;
-            default: error(); return; // 예상치 못한 문자
+            default: error(); return;
         }
-        currentIndex++; // 토큰을 처리했으므로 다음 문자로 이동
+        currentIndex++;
     }
     printTokenName(token);
 }
@@ -78,9 +77,9 @@ void expr() {
         getNextToken();
         term();
     }
-    if (token == END) { // EOF 검사
-        // 여기서 EOF를 만났다면 문법적으로 옳다고 볼 수 있습니다.
-        // 추가적인 처리가 필요할 수 있습니다.
+    if (token == END) {
+        printf("[EOF] 구문 분석을 완료하였습니다.\n");
+        exit(0);
     }
 }
 
