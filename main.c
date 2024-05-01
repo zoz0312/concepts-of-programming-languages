@@ -1,6 +1,7 @@
 #include <stdio.h>
-#include "week3/main.h"
+//#include "week3/main.h"
+#include "LR1-Parser/main.h"
 
 int main() {
-    week3_main();
+    lr_main();
 }
