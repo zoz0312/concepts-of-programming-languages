@@ -1,3 +1,5 @@
+import cloneDeep from 'clone-deep';
+
 type NonTerminal = 'E' | 'T' | 'F';
 type Terminal = '+' | '*' | '(' | ')' | 'id';
 
@@ -22,11 +24,13 @@ interface State {
 }
 
 interface Iterm {
+  arch?: string;
   kernel: State[];
   closure: State[];
+  nextKernelIndex?: number;
+  prevItermIndex: number;
 }
 
-const POINT = '·';
 const iTermList: Iterm[] = [];
 const lhs: string[] = [];
 const rhs: string[] = [];
@@ -69,10 +73,10 @@ const rhs: string[] = [];
 function init() {
   const str: string =
     `S -> E
-    E -> T
     E -> E + T
-    T -> F
+    E -> T
     T -> T * F
+    T -> F
     F -> (E)
     F -> n`.replace(/ /gi, '');
   const grammar: string[] = str.split('\n');
@@ -85,6 +89,7 @@ function init() {
   const firstIterm: Iterm = {
     kernel: [],
     closure: [],
+    prevItermIndex: -1,
   };
   firstIterm.kernel.push({
     lhs: lhs[0] as NonTerminal,
@@ -94,27 +99,54 @@ function init() {
   })
   iTermList.push(firstIterm);
 
-  createIterm(0);
+  let index = 0;
+  do {
+    createIterm(index);
+    index++;
+  } while (iTermList.length > index);
+
+  // iTermList.map(iterm => {
+  //   console.log('iterm', iterm.prevItermIndex)
+  // })
+  iTermList.map((iterm, index) => {
+    console.log('index', index);
+    console.log('iterm.arch', iterm.arch);
+    console.log('iterm.closure', iterm.closure);
+    console.log('iterm.kernel', iterm.kernel);
+    console.log('=================')
+  });
 }
 
 function createIterm (itermIndex: number) {
   const currentIterm = iTermList[itermIndex];
   const { kernel } = currentIterm;
 
-  for (let i=0; i<kernel.length; i++) {
-    createClosure(kernel[i]);
-  }
 
-  console.log('kernel', kernel);
+  for (let i=0; i<kernel.length; i++) {
+    const closure = createClosure(kernel[i], itermIndex);
+    currentIterm.closure = cloneDeep(closure as any) as [];
+    gotoIterm(kernel, closure, itermIndex);
+  }
 }
 
-function createClosure (kernel: State) {
+function createClosure (kernel: State, itermIndex: number): State[] {
   const { rhs: kernelRhs, lookahead, currentIndex } = kernel;
+  // console.log('kernel', kernel);
 
+  if (!kernelRhs[currentIndex]) {
+    return [];
+  } else if (terminalList.includes(kernelRhs[currentIndex] as Terminal)) {
+    return [];
+  }
+
+  if (itermIndex === 4) {
+    console.log('kernel', kernel);
+  }
   const currentState: State[] = [];
   const charForFind: any = [];
 
   let currentKernelRhs;
+
 
   do {
     if (!currentKernelRhs) {
@@ -125,25 +157,27 @@ function createClosure (kernel: State) {
     }
 
     for (let i=0; i<lhs.length; i++) {
-      if (lhs[i] === currentKernelRhs.char) {
+      let stateCurrentIndex = currentKernelRhs.char[currentIndex] === 'E' ? 0 : currentIndex;
+      const char = rhs[i][stateCurrentIndex];
 
+      if (lhs[i] === currentKernelRhs.char) {
         currentState.push({
           lhs: lhs[i] as NonTerminal,
           rhs: rhs[i],
           lookahead,
-          currentIndex
+          currentIndex: stateCurrentIndex,
         });
 
-        const char = rhs[i][currentIndex];
         const isTerminal = terminalList.includes(char as any);
         if (!isTerminal) {
           const currentStateIndex = currentState.findIndex((item: State) => item.lhs === char);
           const charForFindIndex = charForFind.findIndex((item: any) => item.char === char);
+
           if (currentStateIndex === -1 && charForFindIndex === -1) {
             if (lhs.includes(char)) {
               charForFind.push({
                 char,
-                hasTerminal: terminalList.includes(rhs[i][currentIndex + 1] as Terminal)
+                hasTerminal: terminalList.includes(rhs[i][stateCurrentIndex + 1] as Terminal)
               });
             }
           }
@@ -154,13 +188,119 @@ function createClosure (kernel: State) {
     currentKernelRhs = charForFind.shift();
   } while (charForFind.length !== 0 || currentKernelRhs);
 
-  console.log('currentState', currentState);
+  // create Derivation State
+  const derivationState: State[] = [];
+  for (let i=0; i<currentState.length; i++) {
+    const { rhs, currentIndex } = currentState[i];
+    const lookahead = rhs[currentIndex + 1] as Terminal;
+    if (terminalList.includes(lookahead)) {
+      for (let j=i; j<currentState.length; j++) {
+        const cpState = {
+          ...currentState[j],
+          lookahead
+        };
+        derivationState.push(cpState);
+      }
+    }
+  }
+
+  currentState.push(...derivationState);
+  // console.log('currentState', currentState);
+
+  return currentState;
 }
 
-// const insertCurrentString = (str, number) => {
-//   const strs = str.split('');
-//   strs.splice(number, 0, POINT);
-//   return strs.join('');
-// }
+function gotoIterm (kernelOfIterm: State[], closureOfIterm: State[], itermIndex: number) {
+  const gotoArray: {
+    symbol: string;
+    gotoList: any[];
+  }[] = [];
+
+  for (let i=0; i<kernelOfIterm.length; i++) {
+    const kernel = { ...kernelOfIterm[i] };
+    const kernelRhs = kernel.rhs[kernel.currentIndex];
+
+    if (kernelRhs) {
+      let gotoIndex = gotoArray.findIndex((item: any) => item.symbol === kernelRhs);
+      if (gotoIndex === -1) {
+        gotoArray.push({
+          symbol: kernelRhs,
+          gotoList: []
+        });
+        gotoIndex = gotoArray.length - 1;
+      }
+      gotoArray[gotoIndex].gotoList.push(kernel);
+    }
+  }
+
+  for (let i=0; i<closureOfIterm.length; i++) {
+    const closure = { ...closureOfIterm[i] };
+    const closureRhs = closure.rhs[closure.currentIndex];
+
+    if (closureRhs) {
+      let gotoIndex = gotoArray.findIndex((item: any) => {
+        return item.symbol === closureRhs;
+      });
+      if (gotoIndex === -1) {
+        gotoArray.push({
+          symbol: closureRhs,
+          gotoList: []
+        });
+        gotoIndex = gotoArray.length - 1;
+      }
+      gotoArray[gotoIndex].gotoList.push(closure);
+    }
+  }
+
+  // TODO: closure와 iterm끼리 비교
+
+  // console.log('=====================');
+  // console.log('gotoArray', gotoArray);
+  // console.log('');
+
+  for(let i=0; i<gotoArray.length; i++) {
+    const state: any[] = gotoArray[i].gotoList.map((item:any)=> {
+      item.currentIndex++;
+      return item;
+    });
+    const matchIdx = isMatchKernelInIterm(gotoArray[i].gotoList);
+    // console.log('matchIdx', matchIdx);
+    if (matchIdx === -1) {
+      const iterm: Iterm = {
+        arch: gotoArray[i].symbol,
+        kernel: cloneDeep(state),
+        closure: [],
+        prevItermIndex: itermIndex,
+      };
+      iTermList.push(iterm);
+    }
+  }
+  return gotoArray;
+}
+
+function isMatchKernelInIterm (closures: State[]) {
+  const matchItermIndex = iTermList.findIndex((iterm, index) => {
+    const kernelIdx = iterm.kernel.findIndex(kernel => {
+      for (let i=0; i<closures.length; i++) {
+        const closure = closures[i];
+        if (
+            closure.lhs === kernel.lhs &&
+            closure.rhs === kernel.rhs &&
+            closure.currentIndex === kernel.currentIndex &&
+            closure.lookahead === kernel.lookahead
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    // console.log('kernelIdx', kernelIdx);
+    return kernelIdx !== -1;
+  });
+
+  // console.log('matchItermIndex', matchItermIndex);
+  return matchItermIndex;
+}
 
 init();
